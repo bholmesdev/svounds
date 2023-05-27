@@ -1,22 +1,23 @@
-<script>
-	/** @type {import('tone').Synth} */
-	export let synth;
+<script lang="ts">
+	import { eventsByKey } from './keyEvents.store';
+	import type { MaybePromise } from '@sveltejs/kit';
 
-	/** @param {KeyboardEvent} event */
-	function onSpaceDown(event) {
-		synth.toDestination();
-		if (event.key === 'k') {
-			synth.triggerAttack('A4', undefined, 0.5);
+	let onKeyUpCallbacks: (() => MaybePromise<void>)[] = [];
+
+	async function onKeyUp() {
+		while (onKeyUpCallbacks.length) {
+			await onKeyUpCallbacks.pop()?.();
 		}
 	}
 
-	/** @param {KeyboardEvent} event */
-	function onKeyUp(event) {
-		synth.toDestination();
-		if (event.key === 'k') {
-			synth.triggerRelease();
+	async function onKeyDown({ key }: KeyboardEvent) {
+		if (key in $eventsByKey) {
+			const onKeyUp = await $eventsByKey[key].action();
+			if (onKeyUp) {
+				onKeyUpCallbacks.push(onKeyUp);
+			}
 		}
 	}
 </script>
 
-<svelte:body on:keydown={onSpaceDown} on:keyup={onKeyUp} />
+<svelte:body on:keydown={onKeyDown} on:keyup={onKeyUp} />

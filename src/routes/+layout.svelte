@@ -7,4 +7,9 @@
 	import '../app.postcss';
 </script>
 
-<slot />
+<div class="container h-full mx-auto flex justify-center items-center">
+	<div class="flex flex-col gap-5">
+		<h1 class="h1">Let's get cracking tones!</h1>
+		<slot />
+	</div>
+</div>
