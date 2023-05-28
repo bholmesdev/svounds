@@ -1,5 +1,5 @@
-import { derived, get, writable, type Writable } from 'svelte/store';
-import { Recorder, loaded, Player, Synth } from 'tone';
+import { derived, get, writable } from 'svelte/store';
+import { Recorder, Synth, loaded, Players } from 'tone';
 import { fileReaderLoadEnd } from '../utils.js';
 import type { MaybePromise } from '@sveltejs/kit';
 
@@ -7,6 +7,14 @@ export type RecordingStatus = 'off' | 'on' | 'processing';
 
 export const recorder = new Recorder();
 export const synth = new Synth();
+
+type Track = {
+	name: string;
+	audioBuffer: AudioBuffer;
+	offsetSeconds: number;
+};
+
+export const tracks = writable<Track[]>([]);
 
 synth.connect(recorder);
 
@@ -38,6 +46,7 @@ const record: KeyAction = {
 
 		recordingStatus.set('processing');
 		const rawRecordingBlob = await recorder.stop();
+		console.log(recorder.sampleTime);
 
 		if (rawRecordingBlob.size === 0) {
 			recordingStatus.set('off');
@@ -48,17 +57,43 @@ const record: KeyAction = {
 		fileReader.readAsArrayBuffer(rawRecordingBlob);
 		const arrayBuffer = await fileReaderLoadEnd(fileReader);
 		const audioBuffer = await recorder.context.decodeAudioData(arrayBuffer);
-		const player = new Player(audioBuffer).toDestination();
-		await loaded();
-		player.start();
+
+		tracks.update(($tracks) =>
+			$tracks.concat({
+				name: `Track ${$tracks.length + 1}`,
+				audioBuffer,
+				offsetSeconds: 0
+			})
+		);
 		recordingStatus.set('off');
+	}
+};
+
+const play: KeyAction = {
+	key: ' ',
+	async action() {
+		await loaded();
+		const players = new Players();
+		const $tracks = get(tracks);
+
+		for (const track of $tracks) {
+			players.add(track.name, track.audioBuffer);
+		}
+
+		await loaded();
+		players.toDestination();
+
+		for (const track of $tracks) {
+			// Feels inefficient to create a new player for each track
+			// TODO: combine audio buffers into one player?
+			players.player(track.name).start();
+		}
 	}
 };
 
 const playSynth: KeyAction = {
 	key: 'k',
 	action() {
-		console.log('play time');
 		synth.toDestination();
 		synth.triggerAttack('A4', undefined, 0.5);
 
@@ -68,7 +103,7 @@ const playSynth: KeyAction = {
 	}
 };
 
-export const keyEvents = writable({ record, playSynth });
+export const keyEvents = writable({ record, playSynth, play });
 export const eventsByKey = derived(keyEvents, ($keyEvents) => {
 	const actionsByKey: Record<string, KeyAction> = {};
 
