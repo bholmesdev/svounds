@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { eventsByKey } from './keyEvents.store';
+	import { actions, actionsByKeyboardShortcut } from './keyEvents.store';
 	import type { MaybePromise } from '@sveltejs/kit';
+
+	export let playStartFrom = 0;
 
 	let onKeyUpCallbacks: (() => MaybePromise<void>)[] = [];
 
@@ -10,12 +12,18 @@
 		}
 	}
 
-	async function onKeyDown({ key }: KeyboardEvent) {
-		if (key in $eventsByKey) {
-			const onKeyUp = await $eventsByKey[key].action();
-			if (onKeyUp) {
-				onKeyUpCallbacks.push(onKeyUp);
-			}
+	async function onKeyDown(event: KeyboardEvent) {
+		const actionName = $actionsByKeyboardShortcut[event.key];
+		if (!actionName) return;
+
+		switch (actionName) {
+			case 'play':
+				actions.play(playStartFrom);
+				break;
+			default:
+				const keyUp = await actions[actionName]();
+				if (keyUp) onKeyUpCallbacks.push(keyUp);
+				break;
 		}
 	}
 </script>
