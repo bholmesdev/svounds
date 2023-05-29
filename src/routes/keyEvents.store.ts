@@ -3,10 +3,12 @@ import { Recorder, Synth, loaded, Players, Player } from 'tone';
 import type { MaybePromise } from '@sveltejs/kit';
 import { fileReaderLoadEnd, padStartOfBuffer } from '../utils';
 
-export type RecordingStatus = 'off' | 'on' | 'processing';
+export type PlaybackStatus = 'off' | 'recording' | 'recording-processing' | 'playing';
 
 const recorder = new Recorder();
 const synth = new Synth();
+
+export const playheadPosition = writable(0);
 
 type Track = {
 	offset: number;
@@ -48,7 +50,8 @@ export const tracks = createTrackStore();
 
 synth.connect(recorder);
 
-export const recordingStatus = writable<RecordingStatus>('off');
+export const playbackStatus = writable<PlaybackStatus>('off');
+export const playingStatus = writable<'off' | 'on'>('off');
 
 /**
  * Execute `onKeyDown`
@@ -60,24 +63,24 @@ type Action<TPayload = undefined> = TPayload extends undefined
 
 type ActionReturnType = MaybePromise<void | (() => MaybePromise<void>)>;
 
-const record: Action<number> = async (offset) => {
-	const $recordingStatus = get(recordingStatus);
+let recordingStartPosition = 0;
+const record: Action = async () => {
+	const $playbackStatus = get(playbackStatus);
 	// Hack: trigger silent synth note to force padding
 	// on recording start and end
 	const triggerSilence = () => synth.triggerAttack('A4', 0, 0);
 
-	if ($recordingStatus === 'off') {
+	if ($playbackStatus === 'off') {
 		recorder.start();
-		recordingStatus.set('on');
+		playbackStatus.set('recording');
 		triggerSilence();
+		recordingStartPosition = get(playheadPosition);
 		return;
 	}
 
-	if ($recordingStatus === 'processing') {
-		return;
-	}
+	if ($playbackStatus !== 'recording') return;
 
-	recordingStatus.set('processing');
+	playbackStatus.set('recording-processing');
 	triggerSilence();
 
 	const blob = await recorder.stop();
@@ -88,7 +91,7 @@ const record: Action<number> = async (offset) => {
 	if (!(arrayBuffer instanceof ArrayBuffer)) throw new Error('Failed to save recording.');
 	const unpaddedBuffer = await recorder.context.decodeAudioData(arrayBuffer);
 	const { duration } = unpaddedBuffer;
-	const audioBuffer = padStartOfBuffer(unpaddedBuffer, offset);
+	const audioBuffer = padStartOfBuffer(unpaddedBuffer, recordingStartPosition);
 
 	tracks.add(`Track ${get(tracks).size + 1}`, {
 		// Pre-pad the buffer with the offset
@@ -96,16 +99,25 @@ const record: Action<number> = async (offset) => {
 		// Tried using Tone's `start(startTime)` but it didn't work
 		// when using multiple players or on repeat plays.
 		audioBuffer,
-		offset,
+		offset: recordingStartPosition,
 		duration
 	});
-	recordingStatus.set('off');
+	playbackStatus.set('off');
 };
 
-const play: Action<number> = async (playHeadOffset) => {
-	await loaded();
-	for (const name of get(tracks).keys()) {
-		tracks.getPlayer(name).start(0, playHeadOffset);
+const play: Action = async () => {
+	const $playbackStatus = get(playbackStatus);
+	if ($playbackStatus === 'off') {
+		await loaded();
+		for (const name of get(tracks).keys()) {
+			tracks.getPlayer(name).start(0, get(playheadPosition));
+		}
+		playbackStatus.set('playing');
+	} else if ($playbackStatus === 'playing') {
+		for (const name of get(tracks).keys()) {
+			tracks.getPlayer(name).stop();
+		}
+		playbackStatus.set('off');
 	}
 };
 
@@ -118,10 +130,36 @@ const playSynth: Action = () => {
 	};
 };
 
-export const actions = { record, playSynth, play };
+const movePlayheadForward: Action = () => {
+	return playheadPosition.update(($playheadPosition) => $playheadPosition + 1);
+};
+
+const movePlayheadBackward: Action = () => {
+	return playheadPosition.update(($playheadPosition) => {
+		const newPosition = $playheadPosition - 1;
+		if (newPosition < 0) return 0;
+		return newPosition;
+	});
+};
+
+const movePlayheadToStart: Action = () => {
+	playheadPosition.set(0);
+};
+
+export const actions = {
+	record,
+	playSynth,
+	play,
+	movePlayheadForward,
+	movePlayheadBackward,
+	movePlayheadToStart
+};
 
 export const actionsByKeyboardShortcut = writable<Record<string, keyof typeof actions>>({
 	r: 'record',
 	p: 'play',
-	k: 'playSynth'
+	k: 'playSynth',
+	l: 'movePlayheadForward',
+	h: 'movePlayheadBackward',
+	$: 'movePlayheadToStart'
 });

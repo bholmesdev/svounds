@@ -2,47 +2,66 @@
 	import { RangeSlider } from '@skeletonlabs/skeleton';
 	import Record from '../icons/Record.svelte';
 	import KeyEvents from './KeyEvents.svelte';
-	import { actions, recordingStatus, tracks } from './keyEvents.store';
+	import { actions, playbackStatus, playheadPosition, tracks } from './keyEvents.store';
 
 	let zoom = 1;
-	let playHeadPx = 0;
 	let trackWindowWidth = 0;
 	let playHeadMoving = false;
 
 	// Just a number that felt good. idk
 	$: scaledZoom = zoom * 40;
-	$: playHeadOffset = playHeadPx / scaledZoom;
+	$: scaledPlayheadPosition = $playheadPosition * scaledZoom;
 
 	function playHeadMove(e: MouseEvent) {
-		if (playHeadMoving) {
-			playHeadPx += e.movementX;
+		if (!playHeadMoving) return;
+
+		playheadPosition.update((p) => p + e.movementX / scaledZoom);
+		if ($playheadPosition < 0) {
+			playheadPosition.set(0);
 		}
-		if (playHeadPx < 0) {
-			playHeadPx = 0;
-		}
-		if (playHeadPx > trackWindowWidth) {
-			playHeadPx = trackWindowWidth;
+		const descaledWidth = trackWindowWidth / scaledZoom;
+		if ($playheadPosition > descaledWidth) {
+			playheadPosition.set(descaledWidth);
 		}
 	}
+
+	let movingInterval: ReturnType<typeof setInterval> | undefined;
+
+	playbackStatus.subscribe((status) => {
+		if (!movingInterval && (status === 'playing' || status === 'recording')) {
+			movingInterval = setInterval(() => {
+				playheadPosition.update((p) => p + 1 / scaledZoom);
+			}, 1000 / scaledZoom);
+		} else if (movingInterval && (status === 'off' || status === 'recording-processing')) {
+			clearInterval(movingInterval);
+			movingInterval = undefined;
+		}
+	});
 </script>
 
-<KeyEvents {playHeadOffset} />
+<KeyEvents />
 
 <svelte:window on:mouseup={() => (playHeadMoving = false)} on:mousemove={playHeadMove} />
 
 <div class="flex gap-2">
 	<button
-		class:opacity-80={$recordingStatus === 'off'}
-		class:opacity-50={$recordingStatus === 'processing'}
+		class:opacity-50={$playbackStatus === 'recording-processing'}
 		class="bg-surface-700 rounded-md p-2 transition-opacity flex items-center gap-2"
-		on:click={() => actions.record(playHeadOffset)}
+		on:click={() => actions.record()}
 	>
-		<Record class="inline" version={$recordingStatus === 'off' ? 'outline' : 'fill'} />
+		<Record
+			class="inline"
+			version={$playbackStatus === 'recording' || $playbackStatus === 'recording-processing'
+				? 'fill'
+				: 'outline'}
+		/>
 		Record
 	</button>
 
-	<button class="bg-surface-700 rounded-md py-2 px-8" on:click={() => actions.play(playHeadOffset)}
-		>Play</button
+	<button
+		class="bg-surface-700 rounded-md py-2 px-8"
+		disabled={$playbackStatus === 'recording' || $playbackStatus === 'recording-processing'}
+		on:click={() => actions.play()}>Play</button
 	>
 	<RangeSlider class="w-full" name="zoom" bind:value={zoom} min={1} max={10} ticked />
 </div>
@@ -56,7 +75,10 @@
 		style={`--tick-spacing: ${scaledZoom}px;`}
 	/>
 
-	<play-head style={`--position: ${playHeadPx}`} on:mousedown={() => (playHeadMoving = true)} />
+	<play-head
+		style={`--position: ${scaledPlayheadPosition}`}
+		on:mousedown={() => (playHeadMoving = true)}
+	/>
 
 	{#each [...$tracks] as [name, track]}
 		<div
