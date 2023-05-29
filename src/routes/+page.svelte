@@ -6,12 +6,12 @@
 
 	let zoom = 1;
 	let playHeadPx = 0;
-	let playOffsetWidth = 0;
+	let trackWindowWidth = 0;
 	let playHeadMoving = false;
 
 	// Just a number that felt good. idk
 	$: scaledZoom = zoom * 40;
-	$: playHeadSeconds = playHeadPx / scaledZoom;
+	$: playHeadOffset = playHeadPx / scaledZoom;
 
 	function playHeadMove(e: MouseEvent) {
 		if (playHeadMoving) {
@@ -20,13 +20,13 @@
 		if (playHeadPx < 0) {
 			playHeadPx = 0;
 		}
-		if (playHeadPx > playOffsetWidth) {
-			playHeadPx = playOffsetWidth;
+		if (playHeadPx > trackWindowWidth) {
+			playHeadPx = trackWindowWidth;
 		}
 	}
 </script>
 
-<KeyEvents playStartFrom={playHeadSeconds} />
+<KeyEvents {playHeadOffset} />
 
 <svelte:window on:mouseup={() => (playHeadMoving = false)} on:mousemove={playHeadMove} />
 
@@ -35,13 +35,13 @@
 		class:opacity-80={$recordingStatus === 'off'}
 		class:opacity-50={$recordingStatus === 'processing'}
 		class="bg-surface-700 rounded-md p-2 transition-opacity flex items-center gap-2"
-		on:click={() => actions.record()}
+		on:click={() => actions.record(playHeadOffset)}
 	>
 		<Record class="inline" version={$recordingStatus === 'off' ? 'outline' : 'fill'} />
 		Record
 	</button>
 
-	<button class="bg-surface-700 rounded-md py-2 px-8" on:click={() => actions.play(playHeadSeconds)}
+	<button class="bg-surface-700 rounded-md py-2 px-8" on:click={() => actions.play(playHeadOffset)}
 		>Play</button
 	>
 	<RangeSlider class="w-full" name="zoom" bind:value={zoom} min={1} max={10} ticked />
@@ -50,23 +50,24 @@
 <div
 	class=" max-w-full flex flex-col gap-3 relative py-8"
 	style={`--zoom: ${zoom}`}
-	bind:offsetWidth={playOffsetWidth}
+	bind:offsetWidth={trackWindowWidth}
 >
 	<play-head style={`--position: ${playHeadPx}`} on:mousedown={() => (playHeadMoving = true)} />
 
-	{#each $tracks as track}
+	{#each [...$tracks] as [name, track]}
 		<div
-			class="h-24 bg-primary-300 track rounded-sm"
-			style={`--duration: ${track.audioBuffer.duration * scaledZoom}px`}
-		/>
+			class="h-24 bg-primary-300 track rounded-sm w-[var(--duration)] translate-x-[var(--offset)]"
+			style={`
+			--duration: ${track.duration * scaledZoom}px;
+			--offset: ${track.offset * scaledZoom}px;
+			`}
+		>
+			{name}
+		</div>
 	{/each}
 </div>
 
 <style lang="postcss">
-	.track {
-		width: var(--duration);
-	}
-
 	play-head {
 		position: absolute;
 		top: 0;

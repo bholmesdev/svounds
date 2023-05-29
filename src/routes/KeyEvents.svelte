@@ -2,7 +2,7 @@
 	import { actions, actionsByKeyboardShortcut } from './keyEvents.store';
 	import type { MaybePromise } from '@sveltejs/kit';
 
-	export let playStartFrom = 0;
+	export let playHeadOffset = 0;
 
 	let onKeyUpCallbacks: (() => MaybePromise<void>)[] = [];
 
@@ -18,7 +18,10 @@
 
 		switch (actionName) {
 			case 'play':
-				actions.play(playStartFrom);
+				actions.play(playHeadOffset);
+				break;
+			case 'record':
+				actions.record(playHeadOffset);
 				break;
 			default:
 				const keyUp = await actions[actionName]();
