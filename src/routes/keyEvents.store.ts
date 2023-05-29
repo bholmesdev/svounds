@@ -26,6 +26,7 @@ function createTrackStore() {
 
 	return {
 		subscribe,
+		players,
 		getPlayer(name: string): Player {
 			return players.player(name);
 		},
@@ -114,16 +115,14 @@ const play: Action = async () => {
 		}
 		playbackStatus.set('playing');
 	} else if ($playbackStatus === 'playing') {
-		for (const name of get(tracks).keys()) {
-			tracks.getPlayer(name).stop();
-		}
+		tracks.players.stopAll();
 		playbackStatus.set('off');
 	}
 };
 
 const playSynth: Action = () => {
 	synth.toDestination();
-	synth.triggerAttack('A4');
+	synth.triggerAttack('A4', undefined, 0.5);
 
 	return () => {
 		synth.triggerRelease();
