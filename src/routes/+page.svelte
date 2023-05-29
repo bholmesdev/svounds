@@ -48,10 +48,14 @@
 </div>
 
 <div
-	class=" max-w-full flex flex-col gap-3 relative py-8"
-	style={`--zoom: ${zoom}`}
+	class=" rounded-sm bg-surface-900 max-w-full flex flex-col gap-3 relative py-8"
 	bind:offsetWidth={trackWindowWidth}
 >
+	<ruler-ticks
+		class="relative w-full h-5 bg-surface-800"
+		style={`--tick-spacing: ${scaledZoom}px;`}
+	/>
+
 	<play-head style={`--position: ${playHeadPx}`} on:mousedown={() => (playHeadMoving = true)} />
 
 	{#each [...$tracks] as [name, track]}
@@ -68,6 +72,20 @@
 </div>
 
 <style lang="postcss">
+	ruler-ticks::before {
+		--tick-stop: calc(100% - 2px);
+		content: '';
+		background-image: linear-gradient(
+			90deg,
+			transparent 0%,
+			transparent var(--tick-stop),
+			theme(colors.surface.700) var(--tick-stop)
+		);
+		position: absolute;
+		inset: 0;
+		background-size: var(--tick-spacing) 100%;
+	}
+
 	play-head {
 		position: absolute;
 		top: 0;
