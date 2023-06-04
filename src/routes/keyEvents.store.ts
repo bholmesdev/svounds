@@ -10,12 +10,19 @@ const synth = new Synth();
 
 export const playheadPosition = writable(0);
 
-type Track = {
+type FinishedTrack = {
+	type: 'track';
 	offset: number;
 	duration: number;
 	audioBuffer: AudioBuffer;
 };
 
+type Recording = {
+	type: 'recording';
+	offset: number;
+};
+
+type Track = FinishedTrack | Recording;
 type TracksByName = Map<string, Track>;
 
 function createTrackStore() {
@@ -30,11 +37,12 @@ function createTrackStore() {
 		getPlayer(name: string): Player {
 			return players.player(name);
 		},
-		add(name: string, track: Track) {
+		set(name: string, track: Track) {
 			update(($tracks) => {
 				$tracks.set(name, track);
 				return $tracks;
 			});
+			if (track.type === 'recording') return;
 			players.add(name, track.audioBuffer);
 		},
 		remove(name: string) {
@@ -64,6 +72,7 @@ type Action<TPayload = undefined> = TPayload extends undefined
 type ActionReturnType = MaybePromise<void | (() => MaybePromise<void>)>;
 
 let recordingStartPosition = 0;
+let recordingName = '';
 const record: Action = async () => {
 	const $playbackStatus = get(playbackStatus);
 	// Hack: trigger silent synth note to force padding
@@ -75,6 +84,11 @@ const record: Action = async () => {
 		playbackStatus.set('recording');
 		triggerSilence();
 		recordingStartPosition = get(playheadPosition);
+		recordingName = `Track ${get(tracks).size + 1}`;
+		tracks.set(recordingName, {
+			type: 'recording',
+			offset: recordingStartPosition
+		});
 		return;
 	}
 
@@ -93,11 +107,12 @@ const record: Action = async () => {
 	const { duration } = unpaddedBuffer;
 	const audioBuffer = padStartOfBuffer(unpaddedBuffer, recordingStartPosition);
 
-	tracks.add(`Track ${get(tracks).size + 1}`, {
+	tracks.set(recordingName, {
 		// Pre-pad the buffer with the offset
 		// To ensure playback starts at the correct time.
 		// Tried using Tone's `start(startTime)` but it didn't work
 		// when using multiple players or on repeat plays.
+		type: 'track',
 		audioBuffer,
 		offset: recordingStartPosition,
 		duration

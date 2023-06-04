@@ -83,8 +83,14 @@
 	{#each [...$tracks] as [name, track]}
 		<div
 			class="h-24 bg-primary-300 track rounded-sm w-[var(--duration)] translate-x-[var(--offset)]"
+			class:bg-primary-300={track.type === 'track'}
+			class:bg-red-400={track.type === 'recording'}
 			style={`
-			--duration: ${track.duration * scaledZoom}px;
+			--duration: ${
+				track.type === 'track'
+					? track.duration * scaledZoom
+					: scaledPlayheadPosition - track.offset * scaledZoom
+			}px;
 			--offset: ${track.offset * scaledZoom}px;
 			`}
 		>
