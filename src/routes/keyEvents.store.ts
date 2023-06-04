@@ -52,7 +52,6 @@ export const tracks = createTrackStore();
 synth.connect(recorder);
 
 export const playbackStatus = writable<PlaybackStatus>('off');
-export const playingStatus = writable<'off' | 'on'>('off');
 
 /**
  * Execute `onKeyDown`
