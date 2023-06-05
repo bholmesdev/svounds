@@ -8,16 +8,63 @@ export type PlaybackStatus = 'off' | 'recording' | 'recording-processing' | 'pla
 const recorder = new Recorder();
 const synth = new Synth();
 
-export const playbackStatus = writable<PlaybackStatus>('off');
-export const playheadPosition = writable(0);
-
 Transport.bpm.value = 120;
 
-playheadPosition.subscribe(($playheadPosition) => {
-	// Don't sync playhead position while playing
-	if (get(playbackStatus) === 'playing' || get(playbackStatus) === 'recording') return;
-	Transport.seconds = $playheadPosition;
-});
+type TransportStore = {
+	status: PlaybackStatus;
+	progress: number;
+};
+
+function createTransportStore() {
+	const store = writable<TransportStore>({
+		status: 'off',
+		progress: 0
+	});
+
+	let playbackInterval: NodeJS.Timeout | null = null;
+	function setStatus(status: PlaybackStatus) {
+		store.update((s) => ({ ...s, status }));
+	}
+	return {
+		subscribe: store.subscribe,
+		setStatus,
+		setProgress(progress: number) {
+			store.update((s) => ({ ...s, progress }));
+		},
+		updateProgress(callback: (progress: number) => number) {
+			store.update((s) => {
+				const progress = callback(s.progress);
+				return { ...s, progress };
+			});
+		},
+		start() {
+			Transport.start(undefined, get(store).progress);
+			setStatus('playing');
+			playbackInterval = setInterval(() => {
+				store.update((s) => {
+					// keep in sync with Transport
+					const progress = Transport.seconds;
+					return { ...s, progress };
+				});
+			}, 16);
+		},
+		record() {
+			setStatus('recording');
+			playbackInterval = setInterval(() => {
+				store.update((s) => {
+					return { ...s, progress: s.progress + 0.016 };
+				});
+			}, 16);
+		},
+		stop() {
+			Transport.stop();
+			setStatus('off');
+			if (playbackInterval) clearInterval(playbackInterval);
+		}
+	};
+}
+
+export const transport = createTransportStore();
 
 type FinishedTrack = {
 	type: 'track';
@@ -83,16 +130,16 @@ type ActionReturnType = MaybePromise<void | (() => MaybePromise<void>)>;
 let recordingStartPosition = 0;
 let recordingName = '';
 const record: Action = async () => {
-	const $playbackStatus = get(playbackStatus);
+	const $transport = get(transport);
 	// Hack: trigger silent synth note to force padding
 	// on recording start and end
 	const triggerSilence = () => synth.triggerAttack('A4', 0, 0);
 
-	if ($playbackStatus === 'off') {
+	if ($transport.status === 'off') {
 		recorder.start();
-		playbackStatus.set('recording');
+		transport.record();
 		triggerSilence();
-		recordingStartPosition = get(playheadPosition);
+		recordingStartPosition = $transport.progress;
 		recordingName = `Track ${get(tracks).size + 1}`;
 		tracks.set(recordingName, {
 			type: 'recording',
@@ -101,9 +148,9 @@ const record: Action = async () => {
 		return;
 	}
 
-	if ($playbackStatus !== 'recording') return;
+	if ($transport.status !== 'recording') return;
 
-	playbackStatus.set('recording-processing');
+	transport.setStatus('recording-processing');
 	triggerSilence();
 
 	const blob = await recorder.stop();
@@ -121,19 +168,16 @@ const record: Action = async () => {
 		offset: recordingStartPosition,
 		duration
 	});
-	playbackStatus.set('off');
+	transport.stop();
 };
 
-// let recomputePaddedAudioBuffer = false;
 const play: Action = async () => {
-	const $playbackStatus = get(playbackStatus);
-	if ($playbackStatus === 'off') {
+	const $transport = get(transport);
+	if ($transport.status === 'off') {
 		await loaded();
-		Transport.start();
-		playbackStatus.set('playing');
-	} else if ($playbackStatus === 'playing') {
-		Transport.stop();
-		playbackStatus.set('off');
+		transport.start();
+	} else if ($transport.status === 'playing') {
+		transport.stop();
 	}
 };
 
@@ -147,19 +191,19 @@ const playSynth: Action = () => {
 };
 
 const movePlayheadForward: Action = () => {
-	return playheadPosition.update(($playheadPosition) => $playheadPosition + 1);
+	transport.updateProgress((p) => p + 1);
 };
 
 const movePlayheadBackward: Action = () => {
-	return playheadPosition.update(($playheadPosition) => {
-		const newPosition = $playheadPosition - 1;
-		if (newPosition < 0) return 0;
-		return newPosition;
+	return transport.updateProgress((p) => {
+		const newProgress = p - 1;
+		if (newProgress < 0) return 0;
+		return newProgress;
 	});
 };
 
 const movePlayheadToStart: Action = () => {
-	playheadPosition.set(0);
+	transport.setProgress(0);
 };
 
 export const actions = {

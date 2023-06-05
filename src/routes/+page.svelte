@@ -3,40 +3,27 @@
 	import { draggable } from '../use-draggable';
 	import Record from '../icons/Record.svelte';
 	import KeyEvents from './KeyEvents.svelte';
-	import { actions, playbackStatus, playheadPosition, tracks } from './keyEvents.store';
+	import { actions, transport, tracks } from './keyEvents.store';
 
 	let zoom = 1;
 	let trackWindowWidth = 0;
 
 	// Just a number that felt good. idk
 	$: scaledZoom = zoom * 40;
-	$: scaledPlayheadPosition = $playheadPosition * scaledZoom;
-
-	let movingInterval: ReturnType<typeof setInterval> | undefined;
-
-	playbackStatus.subscribe((status) => {
-		if (!movingInterval && (status === 'playing' || status === 'recording')) {
-			movingInterval = setInterval(() => {
-				playheadPosition.update((p) => p + 1 / scaledZoom);
-			}, 1000 / scaledZoom);
-		} else if (movingInterval && (status === 'off' || status === 'recording-processing')) {
-			clearInterval(movingInterval);
-			movingInterval = undefined;
-		}
-	});
+	$: scaledPlayheadPosition = $transport.progress * scaledZoom;
 </script>
 
 <KeyEvents />
 
 <div class="flex gap-2">
 	<button
-		class:opacity-50={$playbackStatus === 'recording-processing'}
+		class:opacity-50={$transport.status === 'recording-processing'}
 		class="bg-surface-700 rounded-md p-2 transition-opacity flex items-center gap-2"
 		on:click={() => actions.record()}
 	>
 		<Record
 			class="inline"
-			version={$playbackStatus === 'recording' || $playbackStatus === 'recording-processing'
+			version={$transport.status === 'recording' || $transport.status === 'recording-processing'
 				? 'fill'
 				: 'outline'}
 		/>
@@ -45,7 +32,7 @@
 
 	<button
 		class="bg-surface-700 rounded-md py-2 px-8"
-		disabled={$playbackStatus === 'recording' || $playbackStatus === 'recording-processing'}
+		disabled={$transport.status === 'recording' || $transport.status === 'recording-processing'}
 		on:click={() => actions.play()}>Play</button
 	>
 	<RangeSlider class="w-full" name="zoom" bind:value={zoom} min={1} max={10} ticked />
@@ -62,7 +49,7 @@
 
 	<play-head
 		use:draggable={(movementX) => {
-			playheadPosition.update((p) => {
+			transport.updateProgress((p) => {
 				const newX = p + movementX / scaledZoom;
 				if (newX < 0) {
 					return 0;
