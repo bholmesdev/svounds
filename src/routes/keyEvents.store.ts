@@ -95,12 +95,21 @@ function createTrackStore() {
 		},
 		async set(name: string, track: Track) {
 			update(($tracks) => {
-				$tracks.set(name, track);
-				if (track.type === 'track' && !players.has(name)) {
-					players.add(name, track.audioBuffer);
-					players.player(name).sync().start(track.offset);
+				switch (track.type) {
+					case 'recording':
+						$tracks.set(name, track);
+						return $tracks;
+					case 'track':
+						if (!players.has(name)) {
+							players.add(name, track.audioBuffer);
+							players.player(name).sync().start(track.offset);
+						} else if ($tracks.get(name)?.offset !== track.offset) {
+							// Resync to register the new offset
+							players.player(name).unsync().stop().sync().start(track.offset);
+						}
+						$tracks.set(name, track);
+						return $tracks;
 				}
-				return $tracks;
 			});
 		},
 		remove(name: string) {
