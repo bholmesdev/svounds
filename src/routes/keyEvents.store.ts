@@ -1,14 +1,23 @@
 import { get, writable } from 'svelte/store';
-import { Recorder, Synth, loaded, Players, Player } from 'tone';
+import { Recorder, Synth, loaded, Players, Player, Transport } from 'tone';
 import type { MaybePromise } from '@sveltejs/kit';
-import { fileReaderLoadEnd, padStartOfBuffer } from '../utils';
+import { fileReaderLoadEnd } from '../utils';
 
 export type PlaybackStatus = 'off' | 'recording' | 'recording-processing' | 'playing';
 
 const recorder = new Recorder();
 const synth = new Synth();
 
+export const playbackStatus = writable<PlaybackStatus>('off');
 export const playheadPosition = writable(0);
+
+Transport.bpm.value = 120;
+
+playheadPosition.subscribe(($playheadPosition) => {
+	// Don't sync playhead position while playing
+	if (get(playbackStatus) === 'playing' || get(playbackStatus) === 'recording') return;
+	Transport.seconds = $playheadPosition;
+});
 
 type FinishedTrack = {
 	type: 'track';
@@ -37,13 +46,15 @@ function createTrackStore() {
 		getPlayer(name: string): Player {
 			return players.player(name);
 		},
-		set(name: string, track: Track) {
+		async set(name: string, track: Track) {
 			update(($tracks) => {
 				$tracks.set(name, track);
+				if (track.type === 'track' && !players.has(name)) {
+					players.add(name, track.audioBuffer);
+					players.player(name).sync().start(track.offset);
+				}
 				return $tracks;
 			});
-			if (track.type === 'recording') return;
-			players.add(name, track.audioBuffer);
 		},
 		remove(name: string) {
 			update(($tracks) => {
@@ -58,8 +69,6 @@ function createTrackStore() {
 export const tracks = createTrackStore();
 
 synth.connect(recorder);
-
-export const playbackStatus = writable<PlaybackStatus>('off');
 
 /**
  * Execute `onKeyDown`
@@ -103,15 +112,10 @@ const record: Action = async () => {
 	fileReader.readAsArrayBuffer(blob);
 	const arrayBuffer = await fileReaderLoadEnd(fileReader);
 	if (!(arrayBuffer instanceof ArrayBuffer)) throw new Error('Failed to save recording.');
-	const unpaddedBuffer = await recorder.context.decodeAudioData(arrayBuffer);
-	const { duration } = unpaddedBuffer;
-	const audioBuffer = padStartOfBuffer(unpaddedBuffer, recordingStartPosition);
+	const audioBuffer = await recorder.context.decodeAudioData(arrayBuffer);
+	const { duration } = audioBuffer;
 
 	tracks.set(recordingName, {
-		// Pre-pad the buffer with the offset
-		// To ensure playback starts at the correct time.
-		// Tried using Tone's `start(startTime)` but it didn't work
-		// when using multiple players or on repeat plays.
 		type: 'track',
 		audioBuffer,
 		offset: recordingStartPosition,
@@ -120,16 +124,15 @@ const record: Action = async () => {
 	playbackStatus.set('off');
 };
 
+// let recomputePaddedAudioBuffer = false;
 const play: Action = async () => {
 	const $playbackStatus = get(playbackStatus);
 	if ($playbackStatus === 'off') {
 		await loaded();
-		for (const name of get(tracks).keys()) {
-			tracks.getPlayer(name).start(0, get(playheadPosition));
-		}
+		Transport.start();
 		playbackStatus.set('playing');
 	} else if ($playbackStatus === 'playing') {
-		tracks.players.stopAll();
+		Transport.stop();
 		playbackStatus.set('off');
 	}
 };

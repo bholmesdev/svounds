@@ -1,29 +1,16 @@
 <script lang="ts">
 	import { RangeSlider } from '@skeletonlabs/skeleton';
+	import { draggable } from '../use-draggable';
 	import Record from '../icons/Record.svelte';
 	import KeyEvents from './KeyEvents.svelte';
 	import { actions, playbackStatus, playheadPosition, tracks } from './keyEvents.store';
 
 	let zoom = 1;
 	let trackWindowWidth = 0;
-	let playHeadMoving = false;
 
 	// Just a number that felt good. idk
 	$: scaledZoom = zoom * 40;
 	$: scaledPlayheadPosition = $playheadPosition * scaledZoom;
-
-	function playHeadMove(e: MouseEvent) {
-		if (!playHeadMoving) return;
-
-		playheadPosition.update((p) => p + e.movementX / scaledZoom);
-		if ($playheadPosition < 0) {
-			playheadPosition.set(0);
-		}
-		const descaledWidth = trackWindowWidth / scaledZoom;
-		if ($playheadPosition > descaledWidth) {
-			playheadPosition.set(descaledWidth);
-		}
-	}
 
 	let movingInterval: ReturnType<typeof setInterval> | undefined;
 
@@ -40,8 +27,6 @@
 </script>
 
 <KeyEvents />
-
-<svelte:window on:mouseup={() => (playHeadMoving = false)} on:mousemove={playHeadMove} />
 
 <div class="flex gap-2">
 	<button
@@ -76,12 +61,40 @@
 	/>
 
 	<play-head
+		use:draggable={(movementX) => {
+			playheadPosition.update((p) => {
+				const newX = p + movementX / scaledZoom;
+				if (newX < 0) {
+					return 0;
+				}
+				const descaledWidth = trackWindowWidth / scaledZoom;
+				if (newX > descaledWidth) {
+					return descaledWidth;
+				} else {
+					return newX;
+				}
+			});
+		}}
 		style={`--position: ${scaledPlayheadPosition}`}
-		on:mousedown={() => (playHeadMoving = true)}
 	/>
 
 	{#each [...$tracks] as [name, track]}
 		<div
+			use:draggable={(movementX) => {
+				let newOffset = track.offset + movementX / scaledZoom;
+				if (newOffset < 0) {
+					newOffset = 0;
+				} else {
+					const descaledWidth = trackWindowWidth / scaledZoom;
+					if (newOffset > descaledWidth) {
+						newOffset = descaledWidth;
+					}
+				}
+				tracks.set(name, {
+					...track,
+					offset: newOffset
+				});
+			}}
 			class="h-24 bg-primary-300 track rounded-sm w-[var(--duration)] translate-x-[var(--offset)]"
 			class:bg-primary-300={track.type === 'track'}
 			class:bg-red-400={track.type === 'recording'}
