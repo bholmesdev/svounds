@@ -21,7 +21,6 @@ function createTransportStore() {
 		progress: 0
 	});
 
-	let playbackInterval: NodeJS.Timeout | null = null;
 	function setStatus(status: PlaybackStatus) {
 		store.update((s) => ({ ...s, status }));
 	}
@@ -40,31 +39,42 @@ function createTransportStore() {
 		start() {
 			Transport.start(undefined, get(store).progress);
 			setStatus('playing');
-			playbackInterval = setInterval(() => {
-				store.update((s) => {
-					// keep in sync with Transport
-					const progress = Transport.seconds;
-					return { ...s, progress };
-				});
-			}, 16);
+			requestAnimationFrame(playInterval);
 		},
 		record() {
 			setStatus('recording');
-			playbackInterval = setInterval(() => {
-				store.update((s) => {
-					return { ...s, progress: s.progress + 0.016 };
-				});
-			}, 16);
+			requestAnimationFrame(recordingInterval);
 		},
 		stop() {
 			Transport.stop();
 			setStatus('off');
-			if (playbackInterval) clearInterval(playbackInterval);
 		}
 	};
 }
 
 export const transport = createTransportStore();
+
+let prevTimestamp: DOMHighResTimeStamp | undefined;
+function recordingInterval(timestamp: DOMHighResTimeStamp) {
+	transport.updateProgress((progress) => {
+		if (!prevTimestamp) return progress;
+		if (get(transport).status !== 'recording') {
+			prevTimestamp = undefined;
+			return progress;
+		}
+		return progress + (timestamp - prevTimestamp) / 1000;
+	});
+	prevTimestamp = timestamp;
+	requestAnimationFrame(recordingInterval);
+}
+
+function playInterval() {
+	transport.updateProgress((p) => {
+		if (get(transport).status !== 'playing') return p;
+		return Transport.seconds;
+	});
+	requestAnimationFrame(playInterval);
+}
 
 type FinishedTrack = {
 	type: 'track';
@@ -230,5 +240,5 @@ export const actionsByKeyboardShortcut = writable<Record<string, keyof typeof ac
 	k: 'playSynth',
 	l: 'movePlayheadForward',
 	h: 'movePlayheadBackward',
-	$: 'movePlayheadToStart'
+	'^': 'movePlayheadToStart'
 });
