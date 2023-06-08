@@ -88,7 +88,7 @@ type Recording = {
 	offset: number;
 };
 
-type Track = FinishedTrack | Recording;
+export type Track = FinishedTrack | Recording;
 type TracksByName = Map<string, Track>;
 
 function createTrackStore() {

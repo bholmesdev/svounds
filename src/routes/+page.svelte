@@ -3,7 +3,7 @@
 	import { draggable } from '../use-draggable';
 	import Record from '../icons/Record.svelte';
 	import KeyEvents from './KeyEvents.svelte';
-	import { actions, transport, tracks } from './keyEvents.store';
+	import { actions, transport, tracks, type Track } from './keyEvents.store';
 
 	let zoom = 1;
 	let trackWindowWidth = 0;
@@ -11,81 +11,89 @@
 	// Just a number that felt good. idk
 	$: scaledZoom = zoom * 40;
 	$: scaledPlayheadPosition = $transport.progress * scaledZoom;
+
+	$: trackWindowWidth = (function getTrackWindowWidth() {
+		let width = scaledPlayheadPosition;
+		for (const track of $tracks.values()) {
+			if (track.type === 'recording') continue;
+
+			const offsetEnd = (track.offset + track.duration) * scaledZoom;
+			width = Math.max(width, offsetEnd);
+		}
+		return width + 400;
+	})();
 </script>
 
 <KeyEvents />
 
-<div class="flex gap-2">
-	<button
-		class:opacity-50={$transport.status === 'recording-processing'}
-		class="bg-surface-700 rounded-md p-2 transition-opacity flex items-center gap-2"
-		on:click={() => actions.record()}
+<div class="flex flex-col gap-4 w-full">
+	<h1 class="h1">Welcome to Svounds!</h1>
+	<div class="flex gap-2 w-full px-3">
+		<button
+			class:opacity-50={$transport.status === 'recording-processing'}
+			class="bg-surface-700 rounded-md p-2 transition-opacity flex items-center gap-2"
+			on:click={() => actions.record()}
+		>
+			<Record
+				class="inline"
+				version={$transport.status === 'recording' || $transport.status === 'recording-processing'
+					? 'fill'
+					: 'outline'}
+			/>
+			Record
+		</button>
+
+		<button
+			class="bg-surface-700 rounded-md py-2 px-8"
+			disabled={$transport.status === 'recording' || $transport.status === 'recording-processing'}
+			on:click={() => actions.play()}>Play</button
+		>
+		<RangeSlider class="w-full" name="zoom" bind:value={zoom} min={1} max={10} ticked />
+	</div>
+
+	<div
+		class="rounded-sm bg-surface-900 w-[var(--width)] min-w-[100vw] flex flex-col gap-3 relative py-8"
+		style={`--width: ${trackWindowWidth}px;`}
 	>
-		<Record
-			class="inline"
-			version={$transport.status === 'recording' || $transport.status === 'recording-processing'
-				? 'fill'
-				: 'outline'}
+		<ruler-ticks
+			class="relative w-full h-5 bg-surface-800"
+			style={`--tick-spacing: ${scaledZoom}px;`}
 		/>
-		Record
-	</button>
 
-	<button
-		class="bg-surface-700 rounded-md py-2 px-8"
-		disabled={$transport.status === 'recording' || $transport.status === 'recording-processing'}
-		on:click={() => actions.play()}>Play</button
-	>
-	<RangeSlider class="w-full" name="zoom" bind:value={zoom} min={1} max={10} ticked />
-</div>
-
-<div
-	class=" rounded-sm bg-surface-900 max-w-full flex flex-col gap-3 relative py-8"
-	bind:offsetWidth={trackWindowWidth}
->
-	<ruler-ticks
-		class="relative w-full h-5 bg-surface-800"
-		style={`--tick-spacing: ${scaledZoom}px;`}
-	/>
-
-	<play-head
-		use:draggable={(movementX) => {
-			transport.updateProgress((p) => {
-				const newX = p + movementX / scaledZoom;
-				if (newX < 0) {
-					return 0;
-				}
-				const descaledWidth = trackWindowWidth / scaledZoom;
-				if (newX > descaledWidth) {
-					return descaledWidth;
-				} else {
-					return newX;
-				}
-			});
-		}}
-		style={`--position: ${scaledPlayheadPosition}`}
-	/>
-
-	{#each [...$tracks] as [name, track]}
-		<div
+		<play-head
 			use:draggable={(movementX) => {
-				let newOffset = track.offset + movementX / scaledZoom;
-				if (newOffset < 0) {
-					newOffset = 0;
-				} else {
-					const descaledWidth = trackWindowWidth / scaledZoom;
-					if (newOffset > descaledWidth) {
-						newOffset = descaledWidth;
+				transport.updateProgress((p) => {
+					const newX = p + movementX / scaledZoom;
+					if (newX < 0) {
+						return 0;
 					}
-				}
-				tracks.set(name, {
-					...track,
-					offset: newOffset
+					return newX;
 				});
 			}}
-			class="h-24 bg-primary-300 track rounded-sm w-[var(--duration)] translate-x-[var(--offset)]"
-			class:bg-primary-300={track.type === 'track'}
-			class:bg-red-400={track.type === 'recording'}
-			style={`
+			style={`--position: ${scaledPlayheadPosition}`}
+		/>
+
+		{#each [...$tracks] as [name, track]}
+			<div
+				use:draggable={(movementX) => {
+					let newOffset = track.offset + movementX / scaledZoom;
+					if (newOffset < 0) {
+						newOffset = 0;
+					} else {
+						const descaledWidth = trackWindowWidth / scaledZoom;
+						if (newOffset > descaledWidth) {
+							newOffset = descaledWidth;
+						}
+					}
+					tracks.set(name, {
+						...track,
+						offset: newOffset
+					});
+				}}
+				class="h-24 bg-primary-300 track rounded-sm w-[var(--duration)] translate-x-[var(--offset)]"
+				class:bg-primary-300={track.type === 'track'}
+				class:bg-red-400={track.type === 'recording'}
+				style={`
 			--duration: ${
 				track.type === 'track'
 					? track.duration * scaledZoom
@@ -93,10 +101,11 @@
 			}px;
 			--offset: ${track.offset * scaledZoom}px;
 			`}
-		>
-			{name}
-		</div>
-	{/each}
+			>
+				{name}
+			</div>
+		{/each}
+	</div>
 </div>
 
 <style lang="postcss">
