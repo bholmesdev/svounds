@@ -127,7 +127,6 @@
 	play-head::before {
 		content: '';
 		position: absolute;
-		/* draw play-head as a triangle POINTING DOWNWARD using clip-path */
 		top: -7px;
 		left: -7px;
 		height: 30px;
