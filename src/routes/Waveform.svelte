@@ -18,8 +18,6 @@
 	$: blockSize = Math.floor(BASE_BLOCK_SIZE / zoom);
 	$: samples = Math.floor(channelData.length / blockSize);
 
-	$: console.log(samples, zoom, waveformPoints);
-
 	let waveformPoints: number[];
 	$: {
 		const filteredData = [];
