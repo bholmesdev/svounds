@@ -4,12 +4,6 @@
 	import Record from '../icons/Record.svelte';
 	import KeyEvents from './KeyEvents.svelte';
 	import { actions, transport, tracks, type Track } from './keyEvents.store';
-	import { Transport } from 'tone';
-
-	let bpm = Transport.bpm.value;
-	$: {
-		Transport.bpm.value = bpm;
-	}
 
 	let zoom = 1;
 	let trackWindowWidth = 0;
@@ -54,8 +48,6 @@
 			disabled={$transport.status === 'recording' || $transport.status === 'recording-processing'}
 			on:click={() => actions.play()}>Play</button
 		>
-		<input class="input" type="number" bind:value={bpm} />
-
 		<RangeSlider class="w-full" name="zoom" bind:value={zoom} min={1} max={10} ticked />
 	</div>
 
