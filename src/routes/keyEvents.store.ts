@@ -37,7 +37,7 @@ function createTransportStore() {
 			});
 		},
 		start() {
-			Transport.start(undefined, get(store).progress);
+			Transport.start(undefined, (get(store).progress / Transport.bpm.value) * 60);
 			setStatus('playing');
 			requestAnimationFrame(playInterval);
 		},
@@ -62,7 +62,8 @@ function recordingInterval(timestamp: DOMHighResTimeStamp) {
 			prevTimestamp = undefined;
 			return progress;
 		}
-		return progress + (timestamp - prevTimestamp) / 1000;
+		const elapsed = timestamp - prevTimestamp;
+		return progress + (elapsed * Transport.bpm.value) / 60000;
 	});
 	prevTimestamp = timestamp;
 	requestAnimationFrame(recordingInterval);
@@ -71,7 +72,7 @@ function recordingInterval(timestamp: DOMHighResTimeStamp) {
 function playInterval() {
 	transport.updateProgress((p) => {
 		if (get(transport).status !== 'playing') return p;
-		return Transport.seconds;
+		return (Transport.seconds * Transport.bpm.value) / 60;
 	});
 	requestAnimationFrame(playInterval);
 }
@@ -185,7 +186,7 @@ const record: Action = async () => {
 		type: 'track',
 		audioBuffer,
 		offset: recordingStartPosition,
-		duration
+		duration: (duration * Transport.bpm.value) / 60
 	});
 	transport.stop();
 };
