@@ -4,6 +4,7 @@
 	import Record from '../icons/Record.svelte';
 	import KeyEvents from './KeyEvents.svelte';
 	import { actions, transport, tracks, type Track } from './keyEvents.store';
+	import Waveform from './Waveform.svelte';
 
 	let zoom = 1;
 	let trackWindowWidth = 0;
@@ -102,7 +103,13 @@
 			--offset: ${track.offset * scaledZoom}px;
 			`}
 			>
-				{name}
+				{#if track.type === 'track'}
+					<Waveform audioBuffer={track.audioBuffer} {zoom} height={96} />
+				{/if}
+				<span
+					class="absolute top-2 left-2 max-w-[100%] whitespace-nowrap overflow-hidden overflow-ellipsis bg-primary-200 p-1 text-primary-900 rounded-sm"
+					>{name}</span
+				>
 			</div>
 		{/each}
 	</div>

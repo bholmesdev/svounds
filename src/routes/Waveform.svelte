@@ -6,25 +6,31 @@
 
 	export let audioBuffer: AudioBuffer | ToneAudioBuffer;
 	export let zoom: number = 1;
+	export let height: number = 100;
 
+	// Lower = more precise, less performant
+	const PRECISION = 10;
 	const BAR_WIDTH = 3;
 	const BAR_SPACING = 2;
-	const BLOCK_SIZE = 1000;
+	const BASE_BLOCK_SIZE = 6000;
 
 	$: channelData = audioBuffer.getChannelData(0);
-	$: samples = Math.floor((channelData.length * zoom) / BLOCK_SIZE);
+	$: blockSize = Math.floor(BASE_BLOCK_SIZE / zoom);
+	$: samples = Math.floor(channelData.length / blockSize);
+
+	$: console.log(samples, zoom, waveformPoints);
 
 	let waveformPoints: number[];
 	$: {
 		const filteredData = [];
 
 		for (let i = 0; i < samples; i++) {
-			const blockStart = BLOCK_SIZE * i;
+			const blockStart = blockSize * i;
 			let sum = 0;
-			for (let j = 0; j < BLOCK_SIZE; j++) {
+			for (let j = 0; j < blockSize; j += PRECISION) {
 				sum = sum + Math.abs(channelData[blockStart + j]);
 			}
-			filteredData.push(sum / BLOCK_SIZE);
+			filteredData.push(sum / blockSize);
 		}
 
 		waveformPoints = normalizeData(filteredData);
@@ -42,7 +48,7 @@
 			x={i * (BAR_WIDTH + BAR_SPACING)}
 			y={50 - n * 50}
 			width={BAR_WIDTH}
-			height={n * 100}
+			height={n * height}
 			fill="currentColor"
 			rx="2"
 		/>
