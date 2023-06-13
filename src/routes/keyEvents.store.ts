@@ -1,24 +1,24 @@
 import { get, writable } from 'svelte/store';
 import { Recorder, Synth, loaded, Players, Player, Transport } from 'tone';
 import type { MaybePromise } from '@sveltejs/kit';
-import { fileReaderLoadEnd } from '../utils';
+import { beatsToSeconds, fileReaderLoadEnd } from '../utils';
 
 export type PlaybackStatus = 'off' | 'recording' | 'recording-processing' | 'playing';
 
 const recorder = new Recorder();
 const synth = new Synth();
 
-Transport.bpm.value = 120;
-
 type TransportStore = {
 	status: PlaybackStatus;
-	progress: number;
+	seconds: number;
+	beats: number;
 };
 
 function createTransportStore() {
 	const store = writable<TransportStore>({
 		status: 'off',
-		progress: 0
+		seconds: 0,
+		beats: 0
 	});
 
 	function setStatus(status: PlaybackStatus) {
@@ -27,17 +27,23 @@ function createTransportStore() {
 	return {
 		subscribe: store.subscribe,
 		setStatus,
-		setProgress(progress: number) {
-			store.update((s) => ({ ...s, progress }));
+		setBpm(bpm: number) {
+			Transport.bpm.value = bpm;
+			store.update((s) => ({ ...s, beats: (s.seconds * bpm) / 60 }));
 		},
-		updateProgress(callback: (progress: number) => number) {
+		setTime(seconds: number) {
+			const beats = (seconds * Transport.bpm.value) / 60;
+			store.update((s) => ({ ...s, seconds, beats }));
+		},
+		updateTime(callback: (seconds: number) => number) {
 			store.update((s) => {
-				const progress = callback(s.progress);
-				return { ...s, progress };
+				const seconds = callback(s.seconds);
+				const beats = (seconds * Transport.bpm.value) / 60;
+				return { ...s, seconds, beats };
 			});
 		},
 		start() {
-			Transport.start(undefined, get(store).progress);
+			Transport.start(undefined, get(store).seconds);
 			setStatus('playing');
 			requestAnimationFrame(playInterval);
 		},
@@ -56,7 +62,7 @@ export const transport = createTransportStore();
 
 let prevTimestamp: DOMHighResTimeStamp | undefined;
 function recordingInterval(timestamp: DOMHighResTimeStamp) {
-	transport.updateProgress((progress) => {
+	transport.updateTime((progress) => {
 		if (!prevTimestamp) return progress;
 		if (get(transport).status !== 'recording') {
 			prevTimestamp = undefined;
@@ -69,7 +75,7 @@ function recordingInterval(timestamp: DOMHighResTimeStamp) {
 }
 
 function playInterval() {
-	transport.updateProgress((p) => {
+	transport.updateTime((p) => {
 		if (get(transport).status !== 'playing') return p;
 		return Transport.seconds;
 	});
@@ -79,7 +85,7 @@ function playInterval() {
 type FinishedTrack = {
 	type: 'track';
 	offset: number;
-	duration: number;
+	durationSeconds: number;
 	audioBuffer: AudioBuffer;
 };
 
@@ -112,10 +118,15 @@ function createTrackStore() {
 					case 'track':
 						if (!players.has(name)) {
 							players.add(name, track.audioBuffer);
-							players.player(name).sync().start(track.offset);
+							players.player(name).sync().start(beatsToSeconds(track.offset, Transport.bpm.value));
 						} else if ($tracks.get(name)?.offset !== track.offset) {
 							// Resync to register the new offset
-							players.player(name).unsync().stop().sync().start(track.offset);
+							players
+								.player(name)
+								.unsync()
+								.stop()
+								.sync()
+								.start(beatsToSeconds(track.offset, Transport.bpm.value));
 						}
 						$tracks.set(name, track);
 						return $tracks;
@@ -146,7 +157,7 @@ type Action<TPayload = undefined> = TPayload extends undefined
 
 type ActionReturnType = MaybePromise<void | (() => MaybePromise<void>)>;
 
-let recordingStartPosition = 0;
+let recordingStartBeats = 0;
 let recordingName = '';
 const record: Action = async () => {
 	const $transport = get(transport);
@@ -158,11 +169,12 @@ const record: Action = async () => {
 		recorder.start();
 		transport.record();
 		triggerSilence();
-		recordingStartPosition = $transport.progress;
+		// TODO: disable bpm setting during recording
+		recordingStartBeats = $transport.beats;
 		recordingName = `Track ${get(tracks).size + 1}`;
 		tracks.set(recordingName, {
 			type: 'recording',
-			offset: recordingStartPosition
+			offset: recordingStartBeats
 		});
 		return;
 	}
@@ -184,8 +196,8 @@ const record: Action = async () => {
 	tracks.set(recordingName, {
 		type: 'track',
 		audioBuffer,
-		offset: recordingStartPosition,
-		duration
+		offset: recordingStartBeats,
+		durationSeconds: duration
 	});
 	transport.stop();
 };
@@ -210,11 +222,11 @@ const playSynth: Action = () => {
 };
 
 const movePlayheadForward: Action = () => {
-	transport.updateProgress((p) => p + 1);
+	transport.updateTime((p) => p + 1);
 };
 
 const movePlayheadBackward: Action = () => {
-	return transport.updateProgress((p) => {
+	return transport.updateTime((p) => {
 		const newProgress = p - 1;
 		if (newProgress < 0) return 0;
 		return newProgress;
@@ -222,7 +234,7 @@ const movePlayheadBackward: Action = () => {
 };
 
 const movePlayheadToStart: Action = () => {
-	transport.setProgress(0);
+	transport.setTime(0);
 };
 
 export const actions = {

@@ -1,24 +1,29 @@
 <script lang="ts">
+	import { Transport } from 'tone';
 	import { RangeSlider } from '@skeletonlabs/skeleton';
 	import { draggable } from '../use-draggable';
 	import Record from '../icons/Record.svelte';
 	import KeyEvents from './KeyEvents.svelte';
-	import { actions, transport, tracks, type Track } from './keyEvents.store';
+	import { actions, transport, tracks } from './keyEvents.store';
 	import Waveform from './Waveform.svelte';
+	import { secondsToBeats } from '../utils';
 
 	let zoom = 1;
 	let trackWindowWidth = 0;
+	let bpm = 120;
+
+	$: transport.setBpm(bpm);
 
 	// Just a number that felt good. idk
-	$: scaledZoom = zoom * 40;
-	$: scaledPlayheadPosition = $transport.progress * scaledZoom;
+	$: scaledZoom = zoom * 20;
+	$: scaledPlayheadPosition = $transport.beats * scaledZoom;
 
 	$: trackWindowWidth = (function getTrackWindowWidth() {
 		let width = scaledPlayheadPosition;
 		for (const track of $tracks.values()) {
 			if (track.type === 'recording') continue;
 
-			const offsetEnd = (track.offset + track.duration) * scaledZoom;
+			const offsetEnd = (track.offset + track.durationSeconds) * scaledZoom;
 			width = Math.max(width, offsetEnd);
 		}
 		return width + 400;
@@ -49,6 +54,7 @@
 			disabled={$transport.status === 'recording' || $transport.status === 'recording-processing'}
 			on:click={() => actions.play()}>Play</button
 		>
+		<input class="input" type="number" bind:value={bpm} />
 		<RangeSlider class="w-full" name="zoom" bind:value={zoom} min={1} max={10} ticked />
 	</div>
 
@@ -63,7 +69,7 @@
 
 		<play-head
 			use:draggable={(movementX) => {
-				transport.updateProgress((p) => {
+				transport.updateTime((p) => {
 					const newX = p + movementX / scaledZoom;
 					if (newX < 0) {
 						return 0;
@@ -97,14 +103,14 @@
 				style={`
 			--duration: ${
 				track.type === 'track'
-					? track.duration * scaledZoom
+					? secondsToBeats(track.durationSeconds, Transport.bpm.value) * scaledZoom
 					: scaledPlayheadPosition - track.offset * scaledZoom
 			}px;
 			--offset: ${track.offset * scaledZoom}px;
 			`}
 			>
 				{#if track.type === 'track'}
-					<Waveform audioBuffer={track.audioBuffer} {zoom} height={96} />
+					<Waveform audioBuffer={track.audioBuffer} {bpm} {zoom} height={96} />
 				{/if}
 				<span
 					class="absolute top-2 left-2 max-w-[100%] whitespace-nowrap overflow-hidden overflow-ellipsis bg-primary-200 p-1 text-primary-900 rounded-sm"

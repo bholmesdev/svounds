@@ -3,8 +3,10 @@
 	// author admits this isn't very efficient (the `j` blockSize loop iterates 10s of thousands of points)
 	// TODO: optimize
 	import type { ToneAudioBuffer } from 'tone';
+	import { beatsToSeconds } from '../utils';
 
 	export let audioBuffer: AudioBuffer | ToneAudioBuffer;
+	export let bpm: number;
 	export let zoom: number = 1;
 	export let height: number = 100;
 
@@ -12,10 +14,10 @@
 	const PRECISION = 30;
 	const BAR_WIDTH = 3;
 	const BAR_SPACING = 2;
-	const BASE_BLOCK_SIZE = 6000;
+	const BASE_BLOCK_SIZE = 12000;
 
 	$: channelData = audioBuffer.getChannelData(0);
-	$: blockSize = Math.floor(BASE_BLOCK_SIZE / zoom);
+	$: blockSize = Math.floor(beatsToSeconds(BASE_BLOCK_SIZE, bpm) / zoom);
 	$: samples = Math.floor(channelData.length / blockSize);
 
 	let waveformPoints: number[];
