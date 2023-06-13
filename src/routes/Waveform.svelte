@@ -9,7 +9,7 @@
 	export let height: number = 100;
 
 	// Lower = more precise, less performant
-	const PRECISION = 10;
+	const PRECISION = 30;
 	const BAR_WIDTH = 3;
 	const BAR_SPACING = 2;
 	const BASE_BLOCK_SIZE = 6000;
